@@ -1,0 +1,17 @@
+# Arnés del agente: memoria de trabajo local, no se publica
+AGENTE.md
+CLAUDE.md
+MEMORY.md
+tareas.json
+progreso/
+reportes/
+evidencia/
+fuentes/
+trabajo/
+credenciales.md
+
+# Herramientas descargadas y binarios
+herramientas/
+entregables/
+*.exe
+__pycache__/

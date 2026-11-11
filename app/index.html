@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'">
+<title>Sin título - Trazo</title>
+<link rel="icon" type="image/svg+xml" href="img/icono.svg">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <div id="menubar"></div>
+  <div id="ribbon"></div>
+  <div id="textbar" hidden></div>
+  <div id="main">
+    <aside id="pagesPanel" hidden></aside>
+    <div id="workarea">
+      <div id="rulerCorner" hidden></div>
+      <canvas id="rulerTop" hidden></canvas>
+      <canvas id="rulerLeft" hidden></canvas>
+      <div id="workspace" tabindex="-1">
+        <div id="stage">
+          <div id="canvasWrap">
+            <div id="checker"></div>
+            <div id="bgColor"></div>
+            <div id="layerStack"></div>
+            <canvas id="gridCanvas"></canvas>
+            <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="overlayDom"></div>
+          </div>
+          <div class="canvas-handle" data-h="nw"></div>
+          <div class="canvas-handle" data-h="n"></div>
+          <div class="canvas-handle" data-h="ne"></div>
+          <div class="canvas-handle" data-h="e"></div>
+          <div class="canvas-handle" data-h="se"></div>
+          <div class="canvas-handle" data-h="s"></div>
+          <div class="canvas-handle" data-h="sw"></div>
+          <div class="canvas-handle" data-h="w"></div>
+          <div id="resizeGhost" hidden></div>
+        </div>
+      </div>
+      <div id="brushCursor" hidden></div>
+      <div id="sidePanel" hidden></div>
+      <div id="thumbPanel" hidden></div>
+    </div>
+    <aside id="layersPanel" hidden></aside>
+  </div>
+  <div id="statusbar"></div>
+</div>
+<div id="overlays"></div>
+<div id="printArea"></div>
+<script src="js/util.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/vec.js"></script>
+<script src="js/codecs.js"></script>
+<script src="js/doc.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/host.js"></script>
+<script src="js/svgio.js"></script>
+<script src="js/view.js"></script>
+<script src="js/shapes.js"></script>
+<script src="js/brushes.js"></script>
+<script src="js/selection.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/text.js"></script>
+<script src="js/colors.js"></script>
+<script src="js/ribbon.js"></script>
+<script src="js/panels.js"></script>
+<script src="js/dialogs.js"></script>
+<script src="js/files.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
