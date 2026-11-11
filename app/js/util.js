@@ -24,9 +24,15 @@
         if (v == null || v === false) continue;
         if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
         else if (k === 'class') e.className += (e.className ? ' ' : '') + v;
-        else if (k === 'text') e.textContent = v;
+        else if (k === 'text') { (e._src || (e._src = {})).text = v; e.textContent = T.tr(v); }
         else if (k === 'html') e.innerHTML = v; // solo marcado propio (iconos), nunca datos de archivos
-        else if (k === 'data') Object.assign(e.dataset, v);
+        else if (k === 'data') {
+          for (const dk in v) {
+            if (dk === 'tip' || dk === 'key') { (e._src || (e._src = {}))[dk] = v[dk]; e.dataset[dk] = T.tr(v[dk]); }
+            else e.dataset[dk] = v[dk];
+          }
+        }
+        else if (k === 'aria-label') { (e._src || (e._src = {})).aria = v; e.setAttribute(k, T.tr(v)); }
         else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2).toLowerCase(), v);
         else if (k.startsWith('aria-') || k === 'role' || k === 'for' || k === 'list') e.setAttribute(k, v);
         else if (k in e) { try { e[k] = v; } catch (err) { e.setAttribute(k, v); } }
@@ -40,7 +46,13 @@
   U.append = function (parent, kid) {
     if (kid == null || kid === false) return;
     if (Array.isArray(kid)) { for (const k of kid) U.append(parent, k); return; }
-    parent.appendChild(typeof kid === 'string' || typeof kid === 'number' ? document.createTextNode(String(kid)) : kid);
+    if (typeof kid === 'string') {
+      const n = document.createTextNode(T.tr(kid));
+      n._src = kid;
+      parent.appendChild(n);
+      return;
+    }
+    parent.appendChild(typeof kid === 'number' ? document.createTextNode(String(kid)) : kid);
   };
 
   U.clear = function (e) { while (e.firstChild) e.removeChild(e.firstChild); return e; };

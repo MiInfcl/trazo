@@ -5,15 +5,16 @@
   const F = T.files = {};
   const page = () => T.view.page;
 
-  const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'dib', 'gif', 'webp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg', 'ico', 'cur', 'trazo'];
+  const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'dib', 'gif', 'webp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg', 'ico', 'cur', 'paint', 'trazo'];
   const OPEN_TYPES = [
     { name: 'Todos los archivos de imagen', ext: IMAGE_EXT },
-    { name: 'SVG', ext: ['svg'] }, { name: 'Iconos', ext: ['ico', 'cur'] }, { name: 'Proyecto de Trazo', ext: ['trazo'] }
+    { name: 'SVG', ext: ['svg'] }, { name: 'Iconos', ext: ['ico', 'cur'] }, { name: 'Proyecto de Paint', ext: ['paint'] }, { name: 'Proyecto de Trazo', ext: ['trazo'] }
   ];
   const FORMATS = {
     png: { name: 'PNG', ext: ['png'] }, jpg: { name: 'JPEG', ext: ['jpg', 'jpeg'] }, bmp: { name: 'Mapa de bits', ext: ['bmp'] },
     gif: { name: 'GIF', ext: ['gif'] }, tiff: { name: 'TIFF', ext: ['tiff', 'tif'] }, webp: { name: 'WebP', ext: ['webp'] },
-    svg: { name: 'SVG', ext: ['svg'] }, ico: { name: 'Icono', ext: ['ico'] }, trazo: { name: 'Proyecto de Trazo', ext: ['trazo'] }
+    svg: { name: 'SVG', ext: ['svg'] }, ico: { name: 'Icono', ext: ['ico'] }, trazo: { name: 'Proyecto de Trazo', ext: ['trazo'] },
+    paint: { name: 'Proyecto de Paint', ext: ['paint'] }
   };
   const fmtOfExt = e => (e === 'jpeg' || e === 'jfif' ? 'jpg' : e === 'tif' ? 'tiff' : e === 'dib' ? 'bmp' : e);
 
@@ -38,6 +39,7 @@
     const ext = U.ext(name);
     const base = { name, handle: handle || null, fileSize: size != null ? size : bytes.length, savedAt: Date.now() };
     if (ext === 'trazo') return loadProject(bytes, base);
+    if (ext === 'paint') return loadPaint(bytes, base);
     if (ext === 'svg' || looksSVG(bytes)) {
       const svg = T.svg.parse(U.bytesToText(bytes));
       const c = await T.svg.rasterize(svg.src, svg.w, svg.h);
@@ -74,6 +76,51 @@
     // Si trae transparencia, el fondo blanco la taparía y se perdería al guardar.
     const p = T.Page.fromCanvas(c, { transparent: hasAlpha(c) });
     return new T.Doc([p], Object.assign(base, { format: FORMATS[fmtOfExt(ext)] ? fmtOfExt(ext) : null }));
+  }
+  /* Proyecto de Paint: en Paint el fondo es una capa más; si es de un solo color pasa a ser el fondo de Trazo. */
+  function uniformOpaque(px) {
+    const r = px[0], g = px[1], b = px[2];
+    for (let i = 0; i < px.length; i += 4) if (px[i] !== r || px[i + 1] !== g || px[i + 2] !== b || px[i + 3] !== 255) return null;
+    return U.rgbToHex(r, g, b);
+  }
+  async function loadPaint(bytes, base) {
+    const f = await K.readPaint(bytes);
+    let layers = f.layers, bg = null;
+    const low = layers[0];
+    if (low.x === 0 && low.y === 0 && low.w === f.w && low.h === f.h && (bg = uniformOpaque(low.rgba))) layers = layers.slice(1);
+    if (!bg && f.fill[3] === 255) bg = U.rgbToHex(f.fill[0], f.fill[1], f.fill[2]);
+    const p = new T.Page(f.w, f.h, { transparent: !bg, bgColor: bg || undefined });
+    if (layers.length) {
+      p.layers = layers.map((l, i) => {
+        const L = new T.Layer(f.w, f.h, T.tr('Capa') + ' ' + (i + 1));
+        L.ctx.putImageData(new ImageData(l.rgba, l.w, l.h), l.x, l.y);
+        L.vec = [V.img(0, 0, f.w, f.h, L.ctx.getImageData(0, 0, f.w, f.h))];
+        return L;
+      });
+      p.activeId = p.layers[p.layers.length - 1].id;
+    }
+    p.rebase();
+    return new T.Doc([p], Object.assign(base, { format: 'paint' }));
+  }
+  function encodePaint(pg, hidden) {
+    const layers = [];
+    if (pg.bg.visible) {
+      const c = U.canvas(pg.w, pg.h);
+      c.ctx.fillStyle = pg.bg.color;
+      c.ctx.fillRect(0, 0, pg.w, pg.h);
+      layers.push(c.ctx.getImageData(0, 0, pg.w, pg.h).data);
+    }
+    for (const L of pg.layers) if (L.visible || hidden === 'keep') layers.push(L.ctx.getImageData(0, 0, pg.w, pg.h).data);
+    if (!layers.length) layers.push(new Uint8ClampedArray(pg.w * pg.h * 4));
+    return K.writePaint(pg.w, pg.h, layers);
+  }
+  /* El formato no guarda (que se sepa) qué capas están ocultas: se pregunta qué hacer con ellas. */
+  async function askPaintHidden(doc) {
+    if (doc.page.layers.every(L => L.visible)) return true;
+    const r = await T.dialogs.paintHidden();
+    if (!r) return false;
+    doc.paintHidden = r;
+    return true;
   }
   function hasAlpha(c) {
     const d = c.ctx.getImageData(0, 0, c.width, c.height).data;
@@ -128,7 +175,9 @@
       return;
     }
     let c;
-    if (U.ext(name) === 'ico' || U.ext(name) === 'cur') {
+    if (U.ext(name) === 'paint') {
+      c = (await parse(name, bytes)).page.composite();
+    } else if (U.ext(name) === 'ico' || U.ext(name) === 'cur') {
       const e = K.readICO(bytes).entries.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
       c = e.png ? await decodeRaster(e.png) : canvasFromRGBA(e.w, e.h, e.rgba);
     } else if (/^tiff?$/.test(U.ext(name))) {
@@ -155,7 +204,8 @@
   }
   const rgbaOf = c => c.ctx.getImageData(0, 0, c.width, c.height).data;
 
-  async function encodePage(pg, fmt) {
+  async function encodePage(pg, fmt, hidden) {
+    if (fmt === 'paint') return encodePaint(pg, hidden);
     const comp = pg.composite();
     switch (fmt) {
       case 'png': return canvasBytes(comp, 'image/png');
@@ -199,7 +249,7 @@
     if (fmt === 'trazo') return saveProject(doc);
     if (fmt === 'ico') return encodeICO(doc.pages.map(p => ({ c: p.composite() })), doc.icoPng);
     if (fmt === 'svg') return encodeSVG(doc.page, doc.svgMode);
-    return encodePage(doc.page, fmt);
+    return encodePage(doc.page, fmt, doc.paintHidden);
   }
 
   async function writeTo(target, bytes, doc, fmt) {
@@ -222,6 +272,7 @@
     if (!doc.handle) return F.saveAs(doc.format);
     try {
       if (doc.format === 'ico' && !checkIconSizes(doc)) return false;
+      if (doc.format === 'paint' && !await askPaintHidden(doc)) return false;
       await writeTo({ name: doc.name, handle: doc.handle }, await encodeDoc(doc, doc.format), doc, doc.format);
       UI.toast('Guardado');
       return true;
@@ -235,6 +286,7 @@
     T.app.finishPending();
     const doc = T.doc, info = FORMATS[fmt];
     try {
+      if (fmt === 'paint' && !await askPaintHidden(doc)) return false;
       /* Un icono guardado como otra cosa exporta solo la resolución actual: el documento sigue siendo el icono. */
       if (doc.kind === 'icon' && fmt !== 'ico' && fmt !== 'trazo') {
         const pg = doc.page;
@@ -243,7 +295,7 @@
           const mode = await T.dialogs.svgOptions();
           if (!mode) return false;
           bytes = encodeSVG(pg, mode);
-        } else bytes = await encodePage(pg, fmt);
+        } else bytes = await encodePage(pg, fmt, doc.paintHidden);
         const t = await T.host.pickSave(U.baseName(doc.name) + '-' + pg.w + 'x' + pg.h + '.' + info.ext[0], [info]);
         if (!t) return false;
         await T.host.write(t, bytes);

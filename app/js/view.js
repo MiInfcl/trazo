@@ -180,7 +180,8 @@
     if (!pts) return;
     for (const p of pts) {
       const h = document.createElement('div');
-      h.className = 'hdl' + (p.round ? ' round' : '');
+      h.className = p.label ? 'hdl-label' : 'hdl' + (p.round ? ' round' : '') + (p.rot ? ' rot' : '');
+      if (p.label) h.textContent = p.label;
       h.style.left = (p.x * V.sx) + 'px';
       h.style.top = (p.y * V.sy) + 'px';
       V.dom.appendChild(h);

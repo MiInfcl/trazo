@@ -61,7 +61,7 @@
       this.undoStack = [];
       this.redoStack = [];
       this._seq = 1;
-      const L = new Layer(this.w, this.h, 'Capa 1');
+      const L = new Layer(this.w, this.h, T.tr('Capa') + ' 1');
       this.layers.push(L);
       this.activeId = L.id;
       this.rebase();
@@ -244,8 +244,8 @@
     /* ---------- Capas ---------- */
     addLayer() {
       let n = this.layers.length + 1;
-      while (this.layers.some(l => l.name === 'Capa ' + n)) n++;
-      const L = new Layer(this.w, this.h, 'Capa ' + n);
+      while (this.layers.some(l => l.name === T.tr('Capa') + ' ' + n)) n++;
+      const L = new Layer(this.w, this.h, T.tr('Capa') + ' ' + n);
       this.layers.splice(this.activeIndex + 1, 0, L);
       this.activeId = L.id;
       T.bus.emit('structure', this);
@@ -266,7 +266,7 @@
       const i = this.layers.findIndex(l => l.id === id);
       if (i < 0) return null;
       const src = this.layers[i];
-      const L = new Layer(this.w, this.h, src.name + ' (copia)');
+      const L = new Layer(this.w, this.h, src.name + T.tr(' (copia)'));
       L.ctx.drawImage(src.canvas, 0, 0);
       L.vec = src.vec;
       L.visible = src.visible;
@@ -517,7 +517,7 @@
       opts = opts || {};
       this.pages = pages;
       this.index = 0;
-      this.name = opts.name || 'Sin título';
+      this.name = opts.name || T.tr('Sin título');
       this.titled = !!opts.name;
       this.format = opts.format || null;   // 'png' | 'jpg' | 'bmp' | 'gif' | 'webp' | 'ico' | 'svg' | 'trazo'
       this.kind = opts.kind || 'image';    // 'image' | 'icon' (varias resoluciones)

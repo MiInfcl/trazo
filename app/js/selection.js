@@ -55,6 +55,16 @@
       return;
     }
     S.owner = true;
+    const rotating = S.drag && S.drag.mode === 'rotate';
+    const rh = rotHandle(c, v.sx);
+    const stem = '<line class="guide-bg" x1="' + rh.x + '" y1="' + c.y + '" x2="' + rh.x + '" y2="' + rh.y + '"/><line class="guide" x1="' + rh.x + '" y1="' + c.y + '" x2="' + rh.x + '" y2="' + rh.y + '"/>';
+    if (rotating && c.rot && c.rot.poly) {
+      // durante el giro se muestra el contorno de la caja original girada
+      const d = 'M' + c.rot.poly.map(q => V.n(q.x) + ' ' + V.n(q.y)).join('L') + 'Z';
+      v.setOverlay('<path class="ants-bg" d="' + d + '"/><path class="ants" d="' + d + '"/>' + stem);
+      v.setHandles([{ x: rh.x, y: rh.y, rot: true }, { x: rh.x, y: rh.y, label: c.rot.angle + '°' }]);
+      return;
+    }
     let shape;
     if (c.mask) {
       const d = maskPath(c), sx = c.w / c.mask.width, sy = c.h / c.mask.height;
@@ -64,9 +74,76 @@
       const r = 'x="' + c.x + '" y="' + c.y + '" width="' + c.w + '" height="' + c.h + '"';
       shape = '<rect class="ants-bg" ' + r + '/><rect class="ants" ' + r + '/>';
     }
-    v.setOverlay(shape);
-    v.setHandles(T.boxHandles(c));
+    v.setOverlay(shape + stem);
+    v.setHandles(T.boxHandles(c).concat([{ x: rh.x, y: rh.y, rot: true }]));
   };
+
+  /* ---------- Giro libre ----------
+   * La manija queda 24 px de pantalla sobre el centro del borde superior. Cada giro se calcula
+   * desde la imagen original de la selección (rot.base), así girar varias veces no la degrada. */
+  const ROT_GAP = 24;
+  function rotHandle(c, zoom) { return { x: c.x + c.w / 2, y: c.y - ROT_GAP / zoom }; }
+  function hitRot(c, p, zoom) { const h = rotHandle(c, zoom); return Math.hypot(p.x - h.x, p.y - h.y) * zoom <= 9; }
+
+  function startRotate(c, p) {
+    lift();
+    const r = c.rot;
+    if (!r || c.float !== r.out || c.w !== r.out.width || c.h !== r.out.height) {
+      // nueva base: lo que se ve ahora, a su tamaño en pantalla
+      const smooth = !(T.doc && T.doc.kind === 'icon');
+      const base = U.canvas(c.w, c.h), mask = U.canvas(c.w, c.h);
+      base.ctx.imageSmoothingEnabled = smooth; base.ctx.imageSmoothingQuality = 'high';
+      base.ctx.drawImage(c.float, 0, 0, c.w, c.h);
+      if (c.mask) mask.ctx.drawImage(c.mask, 0, 0, c.w, c.h); else mask.ctx.fillRect(0, 0, c.w, c.h);
+      c.rot = { base, mask, hadMask: !!c.mask, angle: 0, out: null, ox: c.w / 2, oy: c.h / 2, poly: null };
+    }
+    const cx = c.x + c.rot.ox, cy = c.y + c.rot.oy;
+    S.drag = { mode: 'rotate', cx, cy, a0: Math.atan2(p.y - cy, p.x - cx), angle0: c.rot.angle };
+  }
+
+  function applyRotate(c, angle, cx, cy) {
+    const r = c.rot, bw = r.base.width, bh = r.base.height;
+    const rad = angle * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const fix = v => Math.round(v * 1000) / 1000;
+    const W = Math.max(1, Math.ceil(fix(Math.abs(bw * cos) + Math.abs(bh * sin)))), H = Math.max(1, Math.ceil(fix(Math.abs(bw * sin) + Math.abs(bh * cos))));
+    const smooth = !(T.doc && T.doc.kind === 'icon');
+    const draw = (src, binary) => {
+      const o = U.canvas(W, H);
+      o.ctx.imageSmoothingEnabled = smooth && !binary; o.ctx.imageSmoothingQuality = 'high';
+      o.ctx.translate(W / 2, H / 2); o.ctx.rotate(rad); o.ctx.drawImage(src, -bw / 2, -bh / 2);
+      return o;
+    };
+    const out = draw(r.base);
+    let mask = null;
+    if (r.hadMask || angle % 90 !== 0) {
+      mask = draw(r.mask, true);
+      const im = mask.ctx.getImageData(0, 0, W, H), d = im.data;
+      for (let i = 3; i < d.length; i += 4) d[i] = d[i] >= 128 ? 255 : 0;
+      mask.ctx.putImageData(im, 0, 0);
+    }
+    c.float = out; c.mask = mask; delete c.maskD; c.shown = null; c.touched = true;
+    c.w = W; c.h = H; c.x = Math.round(cx - W / 2); c.y = Math.round(cy - H / 2);
+    r.angle = angle; r.out = out; r.ox = cx - c.x; r.oy = cy - c.y;
+    r.poly = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+      const x = sx * bw / 2, y = sy * bh / 2;
+      return { x: cx + x * cos - y * sin, y: cy + x * sin + y * cos };
+    });
+  }
+
+  /* Gira la selección un ángulo exacto (en grados), sumado al giro que ya tenga. */
+  S.rotateBy = function (deg) {
+    const c = S.cur;
+    if (!c) return false;
+    startRotate(c, { x: c.x + c.w / 2, y: c.y });
+    const d = S.drag;
+    S.drag = null;
+    applyRotate(c, normAngle(c.rot.angle + deg), d.cx, d.cy);
+    drawFloat();
+    S.redraw();
+    T.bus.emit('selection');
+    return true;
+  };
+  const normAngle = a => { a = ((a % 360) + 360) % 360; return a > 180 ? a - 360 : a; };
   T.bus.on('view', () => { if (S.cur) S.redraw(); });
 
   function drawFloat() {
@@ -261,7 +338,7 @@
     const f = c.float, im = f.ctx.getImageData(0, 0, f.width, f.height), d = im.data;
     for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
     f.ctx.putImageData(im, 0, 0);
-    c.shown = null; c.touched = true;
+    c.shown = null; c.touched = true; c.rot = null;
     drawFloat();
     return true;
   };
@@ -309,6 +386,7 @@
     down(p, ev) {
       const c = S.cur, v = VW();
       if (c) {
+        if (ev.button === 0 && hitRot(c, p, v.sx)) { startRotate(c, p); S.redraw(); return; }
         const h = T.hitBox(c, p, v.sx);
         if (h) {
           if (ev.button === 2) return;
@@ -351,6 +429,15 @@
       } else {
         const c = S.cur;
         if (!c) return;
+        if (d.mode === 'rotate') {
+          const deg = (Math.atan2(p.y - d.cy, p.x - d.cx) - d.a0) * 180 / Math.PI;
+          let a = d.angle0 + deg;
+          a = ev.shiftKey ? Math.round(a / 15) * 15 : Math.round(a); // grado a grado; con Mayús, de 15 en 15
+          a = normAngle(a);
+          if (a !== c.rot.angle || !c.rot.out) { applyRotate(c, a, d.cx, d.cy); drawFloat(); }
+          S.redraw();
+          return;
+        }
         if (d.mode === 'move') {
           c.x = Math.round(d.box.x + p.x - d.sx);
           c.y = Math.round(d.box.y + p.y - d.sy);
@@ -367,6 +454,7 @@
       S.drag = null;
       T.bus.emit('sizehint', null);
       if (!d) return;
+      if (d.mode === 'rotate') { S.redraw(); return; }
       if (d.mode === 'rect') {
         const x = Math.floor(Math.min(d.sx, d.ex)), y = Math.floor(Math.min(d.sy, d.ey));
         const w = Math.ceil(Math.max(d.sx, d.ex)) - x, h = Math.ceil(Math.max(d.sy, d.ey)) - y;
@@ -388,6 +476,7 @@
     hover(p) {
       const c = S.cur, v = VW();
       if (!c) return 'crosshair';
+      if (hitRot(c, p, v.sx)) return 'rotate';
       const h = T.hitBox(c, p, v.sx);
       return h ? T.handleCursor(h) : 'crosshair';
     }

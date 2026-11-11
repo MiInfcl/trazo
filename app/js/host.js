@@ -32,7 +32,7 @@
 
   function acceptToFilter(types) {
     // types: [{ name, ext: ['png', ...] }] → filtro de los diálogos de Windows
-    return types.map(t => t.name + '|' + t.ext.map(e => '*.' + e).join(';')).join('|');
+    return types.map(t => T.tr(t.name) + '|' + t.ext.map(e => '*.' + e).join(';')).join('|');
   }
 
   /* Abre archivos. Devuelve [{ name, bytes, handle, size }] (vacío si se canceló). */
@@ -45,7 +45,7 @@
       try {
         const hs = await window.showOpenFilePicker({
           multiple: !!multiple,
-          types: types.map(t => ({ description: t.name, accept: { 'application/octet-stream': t.ext.map(e => '.' + e) } }))
+          types: types.map(t => ({ description: T.tr(t.name), accept: { 'application/octet-stream': t.ext.map(e => '.' + e) } }))
         });
         const out = [];
         for (const h of hs) { const f = await h.getFile(); out.push({ name: f.name, bytes: await U.blobToBytes(f), handle: h, size: f.size }); }
@@ -74,7 +74,7 @@
       try {
         const h = await window.showSaveFilePicker({
           suggestedName: suggested,
-          types: types.map(t => ({ description: t.name, accept: { 'application/octet-stream': t.ext.map(e => '.' + e) } }))
+          types: types.map(t => ({ description: T.tr(t.name), accept: { 'application/octet-stream': t.ext.map(e => '.' + e) } }))
         });
         return { name: h.name, handle: h };
       } catch (e) { if (e.name === 'AbortError') return null; console.warn(e); }

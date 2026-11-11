@@ -221,10 +221,10 @@
       X.FONTS.map(f => el('option', { value: f, text: f })));
     const sizeSel = el('select.tselect', { style: { width: '70px' }, onchange: e => { ts().size = +e.target.value; apply(); } },
       X.SIZES.map(s => el('option', { value: s, text: s })));
-    const toggle = (key, content, tip, style) => el('button.gbtn', { html: content, data: { tip, flag: key }, style, onmousedown: e => e.preventDefault(), onclick: () => { ts()[key] = !ts()[key]; apply(); } });
-    const bold = toggle('bold', '<b>N</b>', 'Negrita'), ital = toggle('italic', '<i>K</i>', 'Cursiva'),
-      und = toggle('underline', '<u>S</u>', 'Subrayado'), str = toggle('strike', '<s>T</s>', 'Tachado'),
-      bg = toggle('bg', T.icon('textBg', 18), 'Relleno de fondo (usa el color 2)');
+    const toggle = (key, content, tip, style) => el('button.gbtn', { data: { tip, flag: key }, style, onmousedown: e => e.preventDefault(), onclick: () => { ts()[key] = !ts()[key]; apply(); } }, content);
+    const bold = toggle('bold', el('b', { text: 'N' }), 'Negrita'), ital = toggle('italic', el('i', { text: 'K' }), 'Cursiva'),
+      und = toggle('underline', el('u', { text: 'S' }), 'Subrayado'), str = toggle('strike', el('s', { text: 'T' }), 'Tachado'),
+      bg = toggle('bg', el('span', { html: T.icon('textBg', 18), style: { display: 'flex' } }), 'Relleno de fondo (usa el color 2)');
     const aligns = ['left', 'center', 'right'].map((a, i) => el('button.gbtn', {
       html: T.icon(['alignL', 'alignC', 'alignR'][i], 18), data: { tip: ['Alinear a la izquierda', 'Centrar', 'Alinear a la derecha'][i] },
       onmousedown: e => e.preventDefault(), onclick: () => { ts().align = a; apply(); }

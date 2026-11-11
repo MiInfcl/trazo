@@ -489,6 +489,335 @@
     return { w, h, rgba };
   };
 
+  /* ---------- Proyecto de Paint (.paint) ----------
+   * Contenedor HEIF/MIAF: cada capa es un elemento «unci» (ISO 23001-17) comprimido con DEFLATE
+   * y un elemento «iovl» las superpone. Microsoft no publicó el formato: el lector es tolerante
+   * (respeta lo que declara el archivo) y el escritor reproduce la disposición que genera Paint. */
+  const ascii = (d, o, n) => String.fromCharCode.apply(null, d.subarray(o, o + n));
+
+  async function inflate(bytes, format, expected) {
+    const ds = new DecompressionStream(format);
+    const w = ds.writable.getWriter();
+    w.write(bytes).catch(() => {});
+    w.close().catch(() => {});
+    const r = ds.readable.getReader();
+    const out = new Uint8Array(expected);
+    let p = 0;
+    for (;;) {
+      const { done, value } = await r.read();
+      if (done) break;
+      if (p + value.length > expected) { r.cancel().catch(() => {}); throw new Error('una capa tiene más datos de los declarados'); }
+      out.set(value, p);
+      p += value.length;
+    }
+    if (p !== expected) throw new Error('una capa tiene menos datos de los declarados');
+    return out;
+  }
+  async function deflateRaw(bytes) {
+    const cs = new CompressionStream('deflate-raw');
+    const w = cs.writable.getWriter();
+    w.write(bytes).catch(() => {});
+    w.close().catch(() => {});
+    const r = cs.readable.getReader(), parts = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await r.read();
+      if (done) break;
+      parts.push(value);
+      total += value.length;
+    }
+    const out = new Uint8Array(total);
+    let p = 0;
+    for (const v of parts) { out.set(v, p); p += v.length; }
+    return out;
+  }
+
+  C.isPaint = d => d.length > 16 && ascii(d, 4, 4) === 'ftyp' && ['mif1', 'miaf'].includes(ascii(d, 8, 4));
+
+  /* Devuelve { w, h, fill: [r, g, b, a], layers: [{ x, y, w, h, rgba }] } de abajo arriba. */
+  C.readPaint = async function (bytes) {
+    try {
+      return await parsePaint(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+    } catch (e) {
+      if (e instanceof RangeError || e instanceof TypeError) throw new Error('El archivo .paint está dañado.');
+      throw e;
+    }
+  };
+
+  async function parsePaint(d) {
+    const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+    const u16 = o => dv.getUint16(o), u32 = o => dv.getUint32(o);
+    const un = (o, n) => (n === 0 ? 0 : n === 4 ? u32(o) : n === 8 ? u32(o) * 4294967296 + u32(o + 4) : (() => { throw new Error('El archivo .paint usa tamaños no admitidos.'); })());
+    function boxes(a, b) {
+      const out = [];
+      while (a + 8 <= b) {
+        let n = u32(a), h = 8;
+        const t = ascii(d, a + 4, 4);
+        if (n === 1) { n = un(a + 8, 8); h = 16; } else if (n === 0) n = b - a;
+        if (n < h || a + n > b) throw new Error('El archivo .paint está dañado o incompleto.');
+        out.push({ t, a: a + h, b: a + n });
+        a += n;
+      }
+      return out;
+    }
+    const find = (list, t) => list.find(x => x.t === t);
+    const top = boxes(0, d.length);
+    const ftyp = find(top, 'ftyp'), metaBox = find(top, 'meta');
+    if (!ftyp || !metaBox) throw new Error('No es un proyecto .paint válido.');
+    const meta = boxes(metaBox.a + 4, metaBox.b);
+    for (const need of ['pitm', 'iinf', 'iloc', 'iprp']) if (!find(meta, need)) throw new Error('No es un proyecto .paint válido.');
+
+    const pb = find(meta, 'pitm');
+    const primary = d[pb.a] === 0 ? u16(pb.a + 4) : u32(pb.a + 4);
+
+    /* Tipos de elemento */
+    const types = new Map();
+    const ib = find(meta, 'iinf'), ic = d[ib.a] === 0 ? 6 : 8;
+    for (const e of boxes(ib.a + ic, ib.b)) {
+      if (e.t !== 'infe') continue;
+      const v = d[e.a];
+      if (v === 2) types.set(u16(e.a + 4), ascii(d, e.a + 8, 4));
+      else if (v === 3) types.set(u32(e.a + 4), ascii(d, e.a + 10, 4));
+    }
+
+    /* Ubicación de los datos */
+    const idat = find(meta, 'idat');
+    const locs = new Map();
+    {
+      const l = find(meta, 'iloc'), v = d[l.a];
+      let p = l.a + 4;
+      const offS = d[p] >> 4, lenS = d[p] & 15, baseS = d[p + 1] >> 4, idxS = v > 0 ? d[p + 1] & 15 : 0;
+      p += 2;
+      const count = v < 2 ? u16(p) : u32(p);
+      p += v < 2 ? 2 : 4;
+      for (let i = 0; i < count; i++) {
+        const id = v < 2 ? u16(p) : u32(p);
+        p += v < 2 ? 2 : 4;
+        let cm = 0;
+        if (v > 0) { cm = u16(p) & 15; p += 2; }
+        p += 2; // índice de referencia de datos
+        const base = un(p, baseS);
+        p += baseS;
+        const ec = u16(p);
+        p += 2;
+        const ext = [];
+        for (let k = 0; k < ec; k++) {
+          p += idxS;
+          const off = un(p, offS); p += offS;
+          const len = un(p, lenS); p += lenS;
+          ext.push({ off: base + off, len });
+        }
+        locs.set(id, { cm, ext });
+      }
+    }
+    function itemBytes(id) {
+      const loc = locs.get(id);
+      if (!loc || loc.cm > 1 || (loc.cm === 1 && !idat)) throw new Error('El archivo .paint usa una ubicación de datos no admitida.');
+      const start = loc.cm === 1 ? idat.a : 0, end = loc.cm === 1 ? idat.b : d.length;
+      let total = 0;
+      for (const e of loc.ext) {
+        if (e.off < 0 || start + e.off + e.len > end) throw new Error('El archivo .paint está dañado o incompleto.');
+        total += e.len;
+      }
+      if (loc.ext.length === 1) return d.subarray(start + loc.ext[0].off, start + loc.ext[0].off + total);
+      const out = new Uint8Array(total);
+      let p = 0;
+      for (const e of loc.ext) { out.set(d.subarray(start + e.off, start + e.off + e.len), p); p += e.len; }
+      return out;
+    }
+
+    /* Propiedades */
+    const iprp = boxes(find(meta, 'iprp').a, find(meta, 'iprp').b);
+    const ipco = find(iprp, 'ipco'), ipma = find(iprp, 'ipma');
+    if (!ipco || !ipma) throw new Error('No es un proyecto .paint válido.');
+    const propList = boxes(ipco.a, ipco.b);
+    const assoc = new Map();
+    {
+      const v = d[ipma.a], wide = dv.getUint32(ipma.a) & 1;
+      let p = ipma.a + 4;
+      const count = u32(p);
+      p += 4;
+      for (let i = 0; i < count; i++) {
+        const id = v < 1 ? u16(p) : u32(p);
+        p += v < 1 ? 2 : 4;
+        const n = d[p++], list = [];
+        for (let k = 0; k < n; k++) {
+          const idx = wide ? u16(p) & 0x7fff : d[p] & 0x7f;
+          p += wide ? 2 : 1;
+          if (idx > 0) { if (idx > propList.length) throw new Error('El archivo .paint está dañado.'); list.push(propList[idx - 1]); }
+        }
+        assoc.set(id, list);
+      }
+    }
+
+    /* Referencias: qué capas forman la superposición */
+    let inputs = [];
+    const ir = find(meta, 'iref');
+    if (ir) {
+      const v = d[ir.a];
+      for (const r of boxes(ir.a + 4, ir.b)) {
+        if (r.t !== 'dimg') continue;
+        let p = r.a;
+        const from = v === 0 ? u16(p) : u32(p);
+        p += v === 0 ? 2 : 4;
+        if (from !== primary) continue;
+        const n = u16(p);
+        p += 2;
+        for (let i = 0; i < n; i++) { inputs.push(v === 0 ? u16(p) : u32(p)); p += v === 0 ? 2 : 4; }
+      }
+    }
+
+    function decodeInfo(id) {
+      const props = assoc.get(id) || [];
+      const ispe = find(props, 'ispe'), unc = find(props, 'uncC'), cmpd = find(props, 'cmpd'), cmpC = find(props, 'cmpC');
+      if (!ispe || !unc) throw new Error('Una capa del .paint no declara su formato.');
+      const w = u32(ispe.a + 4), h = u32(ispe.a + 8);
+      if (!w || !h || w > 30000 || h > 30000 || w * h > 268435456) throw new Error('Una capa del .paint tiene dimensiones no admitidas.');
+      const CH = { 4: 0, 5: 1, 6: 2, 7: 3 };
+      let order;
+      if (d[unc.a] === 1) {
+        const profile = ascii(d, unc.a + 4, 4);
+        order = { rgb3: [0, 1, 2], rgba: [0, 1, 2, 3], abgr: [3, 2, 1, 0] }[profile];
+        if (!order) throw new Error('El .paint usa un perfil de color no admitido: ' + profile);
+      } else {
+        if (!cmpd) throw new Error('Una capa del .paint no declara sus canales.');
+        const nc = u32(cmpd.a), kinds = [];
+        for (let i = 0; i < nc; i++) kinds.push(u16(cmpd.a + 4 + i * 2));
+        let p = unc.a + 8;
+        const count = u32(p);
+        p += 4;
+        order = [];
+        for (let i = 0; i < count; i++) {
+          const idx = u16(p), depth = d[p + 2] + 1, fmt = d[p + 3];
+          p += 5;
+          if (depth !== 8 || fmt !== 0 || !(kinds[idx] in CH)) throw new Error('El .paint usa un formato de píxel no admitido.');
+          order.push(CH[kinds[idx]]);
+        }
+        const sampling = d[p], interleave = d[p + 1], pixelSize = u32(p + 4), rowAlign = u32(p + 8), cols = u32(p + 16), rows = u32(p + 20);
+        if (sampling !== 0 || interleave !== 1 || (pixelSize && pixelSize !== count) || rowAlign > 1 || cols || rows) throw new Error('El .paint usa una disposición de píxeles no admitida.');
+      }
+      let format = null;
+      if (cmpC) {
+        const algo = ascii(d, cmpC.a + 4, 4);
+        if (d[cmpC.a + 8] !== 0) throw new Error('El .paint usa una compresión por partes no admitida.');
+        format = { defl: 'deflate-raw', zlib: 'deflate' }[algo];
+        if (!format) throw new Error('El .paint usa una compresión no admitida: ' + algo);
+      }
+      return { w, h, order, format };
+    }
+
+    async function decodeLayer(id, x, y) {
+      const info = decodeInfo(id), cc = info.order.length, expected = info.w * info.h * cc;
+      const raw = itemBytes(id);
+      let px;
+      if (info.format) {
+        try { px = await inflate(raw, info.format, expected); }
+        catch (e) { throw new Error('Una capa del .paint no se pudo descomprimir: ' + e.message); }
+      } else {
+        if (raw.length !== expected) throw new Error('El archivo .paint está dañado o incompleto.');
+        px = raw;
+      }
+      const rgba = new Uint8ClampedArray(info.w * info.h * 4);
+      const hasA = info.order.includes(3);
+      for (let i = 0, n = info.w * info.h; i < n; i++) {
+        const o = i * 4, s = i * cc;
+        if (!hasA) rgba[o + 3] = 255;
+        for (let c = 0; c < cc; c++) rgba[o + info.order[c]] = px[s + c];
+      }
+      return { x, y, w: info.w, h: info.h, rgba };
+    }
+
+    const type = types.get(primary);
+    if (type === 'unci') {
+      const l = await decodeLayer(primary, 0, 0);
+      return { w: l.w, h: l.h, fill: [255, 255, 255, 0], layers: [l] };
+    }
+    if (type !== 'iovl') throw new Error('Este archivo HEIF no es un proyecto de Paint.');
+    if (!inputs.length) throw new Error('El proyecto .paint no tiene capas.');
+    if (inputs.some(id => types.get(id) !== 'unci')) throw new Error('El proyecto .paint contiene capas de un tipo no admitido.');
+
+    const iv = itemBytes(primary), ov = new DataView(iv.buffer, iv.byteOffset, iv.byteLength);
+    const big = iv[1] & 1, S = big ? 4 : 2;
+    const rd = o => (big ? ov.getUint32(o) : ov.getUint16(o)), rs = o => (big ? ov.getInt32(o) : ov.getInt16(o));
+    if (iv.length < 10 + 2 * S + inputs.length * 2 * S) throw new Error('El archivo .paint está dañado.');
+    const fill = [0, 2, 4, 6].map(k => iv[2 + k]); // byte alto de cada canal de 16 bits
+    const w = rd(10), h = rd(10 + S);
+    if (!w || !h || w > 30000 || h > 30000 || w * h > 268435456) throw new Error('El lienzo del .paint tiene dimensiones no admitidas.');
+    const layers = [];
+    for (let i = 0; i < inputs.length; i++) {
+      const o = 10 + 2 * S + i * 2 * S;
+      layers.push(await decodeLayer(inputs[i], rs(o), rs(o + S)));
+    }
+    return { w, h, fill, layers };
+  }
+
+  /* layers: Uint8ClampedArray RGBA del tamaño del lienzo, de abajo arriba. */
+  C.writePaint = async function (w, h, layers) {
+    if (!layers.length) throw new Error('El proyecto necesita al menos una capa.');
+    if (w > 65535 || h > 65535) throw new Error('El lienzo es demasiado grande para un archivo .paint.');
+    const n = layers.length, ovl = n + 1;
+    const data = [];
+    for (const rgba of layers) {
+      const bgra = new Uint8Array(rgba.length);
+      for (let i = 0; i < rgba.length; i += 4) { bgra[i] = rgba[i + 2]; bgra[i + 1] = rgba[i + 1]; bgra[i + 2] = rgba[i]; bgra[i + 3] = rgba[i + 3]; }
+      data.push(await deflateRaw(bgra));
+    }
+    const num = (v, s) => { const a = []; for (let i = s - 1; i >= 0; i--) a.push(Math.floor(v / Math.pow(256, i)) & 255); return a; };
+    const txt = s => Array.from(s, c => c.charCodeAt(0));
+    const box = (t, ...parts) => { const body = parts.flat(); return num(body.length + 8, 4).concat(txt(t), body); };
+    const full = (t, v, ...parts) => box(t, [v, 0, 0, 0], ...parts);
+
+    /* La superposición: mismo relleno que escribe Paint (blanco con alfa 0). */
+    const iovl = [0, 0, 255, 255, 255, 255, 255, 255, 0, 0].concat(num(w, 2), num(h, 2));
+    for (let i = 0; i < n; i++) iovl.push(0, 0, 0, 0);
+
+    const buildMeta = base => {
+      let off = base;
+      const iloc = [0x44, 0].concat(num(n + 1, 2));
+      for (let i = 0; i < n; i++) {
+        iloc.push(...num(i + 1, 2), 0, 0, 0, 0, 0, 1, ...num(off, 4), ...num(data[i].length, 4));
+        off += data[i].length;
+      }
+      iloc.push(...num(ovl, 2), 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, ...num(iovl.length, 4));
+      const infes = [];
+      for (let i = 1; i <= ovl; i++) infes.push(...full('infe', 2, num(i, 2), [0, 0], txt(i === ovl ? 'iovl' : 'unci'), [0]));
+      const ipco = box('ipco',
+        full('cmpC', 0, txt('defl'), [0]),
+        full('ispe', 0, num(w, 4), num(h, 4)),
+        box('colr', txt('nclx'), [0, 1, 0, 13, 0, 0, 0x80]),
+        box('cmpd', num(4, 4), [0, 4, 0, 5, 0, 6, 0, 7]),
+        full('uncC', 0, txt('gene'), num(4, 4), [0, 2, 7, 0, 0, 0, 1, 7, 0, 0, 0, 0, 7, 0, 0, 0, 3, 7, 0, 0], [0, 1, 0, 0], new Array(20).fill(0)),
+        full('pixi', 0, [4, 8, 8, 8, 8]));
+      const ipma = num(n + 1, 4);
+      for (let i = 1; i <= n; i++) ipma.push(...num(i, 2), 6, 0x81, 2, 3, 0x84, 0x85, 6);
+      ipma.push(...num(ovl, 2), 2, 2, 6);
+      const refs = num(ovl, 2).concat(num(n, 2));
+      for (let i = 1; i <= n; i++) refs.push(...num(i, 2));
+      return full('meta', 0,
+        full('hdlr', 0, new Array(4).fill(0), txt('pict'), new Array(13).fill(0)),
+        full('pitm', 0, num(ovl, 2)),
+        full('iinf', 0, num(ovl, 2), infes),
+        full('iloc', 1, iloc),
+        box('iprp', ipco, full('ipma', 0, ipma)),
+        full('iref', 0, box('dimg', refs)),
+        box('idat', iovl));
+    };
+    const ftyp = box('ftyp', txt('mif1'), [0, 0, 0, 0], txt('mif1'), txt('gcmi'), txt('isoa'), txt('miaf'));
+    const free = box('free', new Array(56).fill(0));
+    const metaLen = buildMeta(0).length;
+    const mdatStart = ftyp.length + metaLen + free.length + 8;
+    const meta = buildMeta(mdatStart);
+    const dataLen = data.reduce((s, x) => s + x.length, 0);
+    const out = new Uint8Array(mdatStart + dataLen);
+    out.set(ftyp, 0);
+    out.set(meta, ftyp.length);
+    out.set(free, ftyp.length + metaLen);
+    out.set(num(dataLen + 8, 4).concat(txt('mdat')), mdatStart - 8);
+    let p = mdatStart;
+    for (const x of data) { out.set(x, p); p += x.length; }
+    return out;
+  };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = C;
   else { root.T = root.T || {}; root.T.codecs = C; }
 })(typeof window !== 'undefined' ? window : globalThis);

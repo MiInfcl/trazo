@@ -65,7 +65,7 @@
 
   /* ---------- Lápiz: píxeles duros ---------- */
   Tools.map.pencil = {
-    cursor: 'none',
+    cursor: 'pencil', ring: 'square',
     down(p, ev) {
       const c = colorFor(ev.button), s = Tools.size();
       this.color = c; this.bbox = new U.BBox(); this.size = s;
@@ -101,7 +101,7 @@
 
   /* ---------- Borrador ---------- */
   Tools.map.eraser = {
-    cursor: 'none',
+    cursor: 'eraser', ring: 'square',
     down(p, ev) {
       this.active = true;
       this.bbox = new U.BBox();
@@ -168,7 +168,7 @@
 
   /* ---------- Relleno ---------- */
   Tools.map.fill = {
-    cursor: 'crosshair',
+    cursor: 'fill',
     down(p, ev) {
       const pg = page(), L = pg.active, x = Math.floor(p.x), y = Math.floor(p.y);
       if (x < 0 || y < 0 || x >= pg.w || y >= pg.h) return;
@@ -216,7 +216,7 @@
 
   /* ---------- Cuentagotas ---------- */
   Tools.map.picker = {
-    cursor: 'crosshair',
+    cursor: 'picker',
     down(p, ev) { this.btn = ev.button; this.active = true; this.apply(p); },
     move(p) { if (this.active) this.apply(p); },
     apply(p) {
@@ -232,7 +232,7 @@
 
   /* ---------- Lupa ---------- */
   Tools.map.magnifier = {
-    cursor: 'zoom-in',
+    cursor: 'zoom',
     down(p, ev) {
       const v = view();
       v.setZoom(v.stepZoom(ev.button === 2 ? -1 : 1), ev.clientX, ev.clientY);
@@ -241,7 +241,7 @@
 
   /* ---------- Pinceles ---------- */
   Tools.map.brush = {
-    cursor: 'none',
+    cursor: 'brush', ring: 'circle',
     down(p, ev) {
       const v = view();
       this.kind = st().brush;
@@ -456,6 +456,46 @@
     }
   };
 
+  /* ---------- Cursores propios ----------
+   * Los del sistema pueden verse blancos sobre el lienzo blanco según la configuración de Windows.
+   * Estos llevan núcleo negro con borde blanco: se distinguen sobre cualquier color. */
+  const svgCursor = (body, hx, hy, fallback) => 'url("data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">' + body + '</svg>') + '") ' + hx + ' ' + hy + ', ' + fallback;
+  const dibujoCursor = (d, extra) => svgCursor('<path d="' + d + '" fill="none" stroke="#fff" stroke-width="3"/><path d="' + d + '" fill="none" stroke="#000" stroke-width="1"/>' + (extra || ''), 15, 15, 'crosshair');
+  /* Dibujo de herramienta: partes [ruta, relleno] con w = blanco, b = negro, g = gris, n = solo línea.
+   * Primero un halo blanco y encima el dibujo con contorno negro. */
+  const RELLENO = { w: '#fff', b: '#000', g: '#8a8a8a', n: 'none' };
+  const iconoCursor = (parts, hx, hy, fallback) => svgCursor(
+    '<g stroke="#fff" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round">' +
+    parts.map(p => '<path d="' + p[0] + '" fill="' + (p[1] === 'n' ? 'none' : '#fff') + '"/>').join('') + '</g>' +
+    '<g stroke="#000" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">' +
+    parts.map(p => '<path d="' + p[0] + '" fill="' + RELLENO[p[1]] + '"/>').join('') + '</g>', hx, hy, fallback || 'crosshair');
+  const CURSORES = {
+    crosshair: dibujoCursor('M15.5 4v9M15.5 18v9M4 15.5h9M18 15.5h9', '<rect x="14" y="14" width="3" height="3" fill="#fff"/><rect x="15" y="15" width="1" height="1" fill="#000"/>'),
+    text: svgCursor('<path d="M11 5h9M15.5 5v21M11 26h9" fill="none" stroke="#fff" stroke-width="3"/><path d="M11 5h9M15.5 5v21M11 26h9" fill="none" stroke="#000" stroke-width="1"/>', 15, 15, 'text'),
+    pencil: iconoCursor([
+      ['M3 29L4.8 22.3L18.9 8.1L23.9 13.1L9.7 27.2Z', 'w'], ['M18.9 8.1L21.7 5.3L26.7 10.3L23.9 13.1Z', 'g'],
+      ['M4.8 22.3L9.7 27.2', 'n'], ['M3 29L3.9 25.7L6.3 28.1Z', 'b']], 3, 29),
+    brush: iconoCursor([
+      ['M11 18L23.5 5.5C25 4 28 7 26.5 8.5L14 21Z', 'w'], ['M8 21L11 18L14 21L11 24Z', 'g'],
+      ['M3 29C3 25 5 22 8 21L11 24C10 27 7 29 3 29Z', 'b']], 3, 29),
+    eraser: iconoCursor([
+      ['M7.5 17.5L16 9L23 16L14.5 24.5Z', 'g'], ['M3 22L7.5 17.5L14.5 24.5L10 29Z', 'w']], 6, 25),
+    fill: iconoCursor([
+      ['M15 9C13 3 21 0 24 6', 'n'], ['M11 13L19 5L28 14L20 22Z', 'w'], ['M11 13L20 22', 'n'],
+      ['M11 13C7 15 4 19 4 25C4 27.5 6.5 27.5 6.5 25C6.5 21 8.5 17.5 13 15Z', 'b']], 5, 27),
+    picker: iconoCursor([
+      ['M3 29L4 24.5L16 12.5L19.5 16L7.5 28Z', 'w'], ['M13.6 11.9L15.4 10.1L21.9 16.6L20.1 18.4Z', 'b'],
+      ['M16.5 10.3L20.5 6.3C22.5 4.3 25.5 4 27 5.5C28.5 7 28.2 10 26.2 12L22.2 16Z', 'b']], 3, 29),
+    zoom: iconoCursor([
+      ['M18.2 19.6L20.4 17.4L28.5 25.5C29.2 26.2 29.2 27.3 28.5 28C27.8 28.7 26.7 28.7 26 28Z', 'b'],
+      ['M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0 -17 0Z', 'w'], ['M12 8.5v7M8.5 12h7', 'n']], 12, 12, 'zoom-in'),
+    rotate: iconoCursor([
+      ['M8 20A9 9 0 1 1 22 23', 'n'], ['M19 25L23 22.5L21.5 18.5', 'n']], 16, 16, 'grab')
+  };
+  const cursorCss = c => CURSORES[c] || c;
+  Tools.cursorCss = cursorCss;
+
   /* ---------- Reparto de eventos ---------- */
   Tools.init = function () {
     Tools.map.select = T.selection.tool;
@@ -532,18 +572,20 @@
     function hover(p) {
       const t = tool();
       const c = t.hover ? t.hover(p) : t.cursor;
-      ws.style.cursor = c || 'default';
+      ws.style.cursor = cursorCss(c || 'default');
     }
-    function refreshCursor() { const t = tool(); ws.style.cursor = t.cursor === 'none' ? 'none' : t.cursor || 'default'; }
+    function refreshCursor() { const t = tool(); ws.style.cursor = cursorCss(t.cursor || 'default'); }
     function updateCursor(ev) {
       const t = tool();
-      if (t.cursor === 'none' && onCanvas(ev)) {
-        const zoomed = Tools.size() * v.sx;
-        v.brushCursor(ev.clientX, ev.clientY, zoomed, st().tool !== 'brush');
+      if (!t.ring) return;
+      const zoomed = Tools.size() * v.sx;
+      // con trazos finos el contorno no se distingue: se muestra el dibujo de la herramienta
+      if (onCanvas(ev) && zoomed >= 7) {
+        v.brushCursor(ev.clientX, ev.clientY, zoomed, t.ring === 'square');
         ws.style.cursor = 'none';
       } else {
         v.brushCursor(null);
-        if (t.cursor === 'none') ws.style.cursor = 'crosshair';
+        ws.style.cursor = cursorCss(t.cursor);
       }
     }
     T.bus.on('tool', () => { v.brushCursor(null); refreshCursor(); });

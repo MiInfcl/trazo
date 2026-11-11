@@ -50,7 +50,8 @@
       { label: 'SVG (vectorial)' + page, icon: 'vector', run: () => F().saveAs('svg') },
       { label: icon ? 'ICO (todas las resoluciones)' : 'ICO (generar varias resoluciones)', icon: 'iconFile', run: () => F().saveAs('ico') },
       { sep: true },
-      { label: 'Proyecto de Trazo (conserva capas)', icon: 'project', run: () => F().saveAs('trazo') }
+      { label: 'Proyecto de Paint (.paint)' + page, icon: 'project', run: () => F().saveAs('paint') },
+      { label: 'Proyecto de Trazo (conserva capas y vector)', icon: 'project', run: () => F().saveAs('trazo') }
     ];
   }
   function editMenu() {
@@ -86,7 +87,8 @@
       flag('Cinta', '', 'ribbon'),
       flag('Miniatura', '', 'thumb'),
       { sep: true },
-      { label: 'Pantalla completa', icon: 'fullscreen', key: 'F11', run: () => A().fullView() }
+      { label: 'Pantalla completa', icon: 'fullscreen', key: A().fullKeys().window, run: () => A().windowFull() },
+      { label: 'Ver solo la imagen', icon: 'image', key: A().fullKeys().image, run: () => A().fullView() }
     ];
   }
 
@@ -201,9 +203,8 @@
     const galleryWrap = el('div.gallery-wrap', null, gallery);
     const shapesCollapsed = el('button.tbtn.rcollapsed.shapes-c', { html: T.icon('shapes', 24), data: { tip: 'Formas' }, style: { width: '44px', height: '44px' }, onclick: ev => UI.menu(ev.currentTarget, [{ custom: shapeGallery() }, { sep: true }, { label: 'Contorno', icon: 'outline', sub: styleMenu('outline', 'Sin contorno') }, { label: 'Relleno', icon: 'shapeFill', sub: styleMenu('fill', 'Sin relleno') }]) });
     const opt = (icon, label, menu) => {
-      const b = el('button.optbtn', { 'aria-label': label, onclick: () => { if (UI.menuOwner === b) UI.closeMenus(0); else UI.menu(b, menu, { owner: b }); } },
+      const b = el('button.optbtn', { 'aria-label': label, data: { tip: label }, onclick: () => { if (UI.menuOwner === b) UI.closeMenus(0); else UI.menu(b, menu, { owner: b }); } },
         el('span', { html: T.icon(icon, 20), style: { display: 'flex' } }), el('span.chev', { html: T.icon('chevDown', 11), style: { display: 'flex' } }));
-      b.dataset.tip = label;
       return b;
     };
     R.outlineBtn = opt('penOutline', 'Contorno', styleMenu('outline', 'Sin contorno'));

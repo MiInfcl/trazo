@@ -189,7 +189,7 @@
     if (!pg) return;
     const c = T.selection.cur;
     P.sSel.textContent = P.hint ? P.hint[0] + ' × ' + P.hint[1] + 'px' : c ? c.w + ' × ' + c.h + 'px' : '';
-    P.sSize.textContent = pg.w + ' × ' + pg.h + ' píxeles';
+    P.sSize.textContent = T.tr(pg.w + ' × ' + pg.h + ' píxeles');
     P.sFile.textContent = T.doc && T.doc.fileSize != null ? U.fmtBytes(T.doc.fileSize) : '';
     P.fileItem.hidden = !P.sFile.textContent;
     P.zoomLabel.textContent = (Math.round(v.zoom * 1000) / 10) + ' %';
@@ -199,8 +199,8 @@
   /* ---------- Deslizadores de tamaño y opacidad ---------- */
   P.buildSide = function () {
     const root = document.getElementById('sidePanel');
-    P.sizeS = UI.vslider({ min: 1, max: 100, value: 5, icon: 'sizeLines', format: v => 'Tamaño: ' + v + ' px', onInput: v => T.tools.setSize(v) });
-    P.opS = UI.vslider({ min: 1, max: 100, value: 100, icon: 'drop', format: v => 'Opacidad: ' + v + ' %', onInput: v => T.tools.setOpacity(v) });
+    P.sizeS = UI.vslider({ min: 1, max: 100, value: 5, icon: 'sizeLines', format: v => T.tr('Tamaño: ' + v + ' px'), onInput: v => T.tools.setSize(v) });
+    P.opS = UI.vslider({ min: 1, max: 100, value: 100, icon: 'drop', format: v => T.tr('Opacidad: ' + v + ' %'), onInput: v => T.tools.setOpacity(v) });
     U.append(root, [P.sizeS.el, P.opS.el]);
     const sync = () => {
       const show = T.tools.usesSize();
@@ -220,6 +220,9 @@
     const c = thumbCanvas((x, w, h) => x.drawImage(comp, 0, 0, w, h), pg.w, pg.h, 200, 160);
     U.clear(root).appendChild(c);
   };
+
+  /* Tras cambiar de idioma: lo que se escribe con textContent. */
+  P.relabel = function () { P.syncStatus(); P.sizeS.paint(); P.opS.paint(); };
 
   const refresh = U.debounce(() => { P.drawLayers(); P.drawPages(); P.drawThumb(); }, 40);
   P.refresh = refresh;

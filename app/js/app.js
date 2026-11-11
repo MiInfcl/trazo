@@ -12,7 +12,8 @@
     opacities: { pencil: 100, brush: 100, eraser: 100, shape: 100 },
     view: { rulers: false, grid: false, status: true, thumb: false, layers: false, ribbon: true },
     text: { font: 'Segoe UI', size: 18, bold: false, italic: false, underline: false, strike: false, align: 'left', bg: false },
-    theme: 'system'
+    theme: 'system', lang: 'system',
+    f11: 'auto' // qué abre F11: 'window' (pantalla completa normal) o 'image' (solo la imagen, como Paint)
   };
 
   function loadState() {
@@ -36,6 +37,17 @@
     T.view.drawRulers();
   };
   dark.addEventListener('change', () => A.applyTheme());
+
+  A.setLanguage = function (choice) {
+    T.state.lang = choice;
+    T.i18n.set(choice);
+    T.i18n.apply();
+    if (!T.doc.titled) T.doc.name = T.tr('Sin título');
+    A.refreshTitle();
+    T.panels.relabel();
+    T.panels.refresh();
+    A.saveState();
+  };
 
   /* ---------- Documento ---------- */
   A.titleText = function () {
@@ -239,6 +251,23 @@
     T.ribbon.sync();
     A.saveState();
   };
+  /* F11 y Mayús+F11: una abre la pantalla completa normal y la otra la de Paint (solo la imagen).
+   * En la web F11 es la normal; en el .exe, la de Paint. Se intercambian en Configuración. */
+  A.f11Mode = () => T.state.f11 === 'window' || T.state.f11 === 'image' ? T.state.f11 : (T.host.desktop ? 'image' : 'window');
+  A.fullKeys = function () {
+    const f = A.f11Mode();
+    return { window: f === 'window' ? 'F11' : 'Mayús+F11', image: f === 'image' ? 'F11' : 'Mayús+F11' };
+  };
+  A.fullKey = function (shift) {
+    const f = A.f11Mode(), which = shift ? (f === 'window' ? 'image' : 'window') : f;
+    if (which === 'window') A.windowFull(); else A.fullView();
+  };
+  A.setF11 = function (mode) { T.state.f11 = mode; A.saveState(); };
+  A.windowFull = function () {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    if (r && r.catch) r.catch(() => UI.toast('No se pudo activar la pantalla completa.'));
+  };
   A.fullView = function () {
     A.finishPending();
     const c = T.view.page.composite();
@@ -290,7 +319,7 @@
     } else {
       switch (k) {
         case 'F12': F.saveAs(T.doc.format || 'png'); break;
-        case 'F11': A.fullView(); break;
+        case 'F11': A.fullKey(ev.shiftKey); break;
         case 'Delete': if (!T.selection.remove()) done = false; break;
         case 'Escape':
           if (T.tools.pendingShape) T.tools.map.shape.cancel();
@@ -336,6 +365,7 @@
   /* ---------- Arranque ---------- */
   function init() {
     T.state = loadState();
+    T.i18n.set(T.state.lang);
     T.view.init();
     T.doc = new T.Doc([new T.Page(1152, 648)]);
     T.ribbon.buildMenubar();

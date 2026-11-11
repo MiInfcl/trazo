@@ -8,10 +8,13 @@ Trazo es un proyecto independiente. No está afiliado a Microsoft ni usa su cód
 
 - **Dibujo:** lápiz, 9 pinceles, relleno, borrador, selector de color, lupa y texto.
 - **23 formas** editables hasta confirmarlas, con contorno y relleno.
-- **Selección** rectangular y de forma libre: mover, copiar con Ctrl, escalar, girar, voltear, invertir, selección transparente.
+- **Selección** rectangular y de forma libre: mover, copiar con Ctrl, escalar, girar grado a grado con su manija (con Mayús, de 15 en 15), voltear, invertir, selección transparente.
 - **Capas** con visibilidad, orden, duplicar y combinar; fondo aparte, que puede ser transparente.
 - **Imagen:** recortar, cambiar tamaño, sesgar, girar, voltear, invertir colores y cambiar el lienzo desde sus 8 tiradores.
-- Reglas, cuadrícula, miniatura, pantalla completa, tema claro y oscuro.
+- Reglas, cuadrícula, miniatura, tema claro y oscuro.
+- Dos pantallas completas: la normal (toda la aplicación) y la de Paint (solo la imagen). En la web F11 abre la normal y Mayús+F11 la de Paint; en Windows es al revés. Se intercambian en Configuración.
+- Cada herramienta muestra su propio cursor, visible sobre cualquier color.
+- Interfaz en español, inglés y portugués (se cambia en Configuración).
 
 ### SVG de verdad
 
@@ -32,7 +35,10 @@ Cada resolución de un icono es una página independiente, con sus propias capas
 | CUR | Sí | Se guarda como ICO |
 | AVIF | Sí | No |
 | HEIC | Solo en escritorio, con las Extensiones HEIF de Windows | No |
+| `.paint` (proyecto de Paint de Windows 11, con capas) | Sí | Sí |
 | `.trazo` (proyecto con capas y vector) | Sí | Sí |
+
+Microsoft no publicó el formato `.paint`: Trazo lo implementa a partir de archivos reales y de la documentación de [mspaintlib](https://github.com/setiri/mspaintlib). Ese formato guarda las capas como píxeles; no guarda nombres de capa, qué capas están ocultas ni el vector. Para conservar todo eso usa `.trazo`.
 
 ## Usarlo
 
@@ -60,4 +66,4 @@ node --test pruebas/
 
 ## Atajos principales
 
-`Ctrl+N` nuevo · `Ctrl+O` abrir · `Ctrl+S` guardar · `F12` guardar como · `Ctrl+P` imprimir · `Ctrl+Z` / `Ctrl+Y` deshacer y rehacer · `Ctrl+A` seleccionar todo · `Ctrl+X` / `C` / `V` cortar, copiar y pegar · `Ctrl+W` cambiar tamaño · `Ctrl+E` propiedades · `Ctrl+R` reglas · `Ctrl+G` cuadrícula · `Ctrl+RePág` / `AvPág` zoom · `F11` pantalla completa
+`Ctrl+N` nuevo · `Ctrl+O` abrir · `Ctrl+S` guardar · `F12` guardar como · `Ctrl+P` imprimir · `Ctrl+Z` / `Ctrl+Y` deshacer y rehacer · `Ctrl+A` seleccionar todo · `Ctrl+X` / `C` / `V` cortar, copiar y pegar · `Ctrl+W` cambiar tamaño · `Ctrl+E` propiedades · `Ctrl+R` reglas · `Ctrl+G` cuadrícula · `Ctrl+RePág` / `AvPág` zoom · `F11` / `Mayús+F11` pantalla completa

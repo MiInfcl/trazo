@@ -81,9 +81,11 @@ static class Program
                 }
             Directory.Move(tmp, dir);
         }
-        foreach (string old in Directory.GetDirectories(BaseDir, "app-*"))
-            if (!string.Equals(old, dir, StringComparison.OrdinalIgnoreCase))
-                try { Directory.Delete(old, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        // Las versiones viejas se borran solo si no hay otra ventana de Trazo que pueda estar usándolas.
+        if (System.Diagnostics.Process.GetProcessesByName("Trazo").Length <= 1)
+            foreach (string old in Directory.GetDirectories(BaseDir, "app-*"))
+                if (!string.Equals(old, dir, StringComparison.OrdinalIgnoreCase))
+                    try { Directory.Delete(old, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         return dir;
     }
 
@@ -155,6 +157,7 @@ sealed class MainForm : Form
             c.Settings.IsZoomControlEnabled = false;
             c.SetVirtualHostNameToFolderMapping("trazo.example", app, CoreWebView2HostResourceAccessKind.Deny);
             c.WebMessageReceived += OnMessage;
+            c.ContainsFullScreenElementChanged += delegate { SetFullScreen(c.ContainsFullScreenElement); };
             c.NewWindowRequested += delegate (object s, CoreWebView2NewWindowRequestedEventArgs e) { e.Handled = true; };
             c.NavigationStarting += delegate (object s, CoreWebView2NavigationStartingEventArgs e)
             {
@@ -171,6 +174,27 @@ sealed class MainForm : Form
         {
             MessageBox.Show(this, "Trazo necesita Microsoft Edge WebView2, que viene con Windows 11. Instálalo desde el sitio de Microsoft y vuelve a abrir la aplicación.", "Trazo", MessageBoxButtons.OK, MessageBoxIcon.Error);
             Close();
+        }
+    }
+
+    /* Pantalla completa normal (la que pide la página con F11 o Mayús+F11): ventana sin bordes que cubre la pantalla. */
+    FormWindowState stateBeforeFull = FormWindowState.Normal;
+    bool full;
+    void SetFullScreen(bool on)
+    {
+        if (on == full) return;
+        full = on;
+        if (on)
+        {
+            stateBeforeFull = WindowState;
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Normal; // si ya estaba maximizada, hay que soltarla para cubrir la barra de tareas
+            WindowState = FormWindowState.Maximized;
+        }
+        else
+        {
+            FormBorderStyle = FormBorderStyle.Sizable;
+            WindowState = stateBeforeFull;
         }
     }
 

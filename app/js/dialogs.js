@@ -151,9 +151,24 @@
       r.input.addEventListener('change', () => { T.state.theme = v; T.app.applyTheme(); T.app.saveState(); });
       return r;
     });
+    const lang = el('select.tselect', { 'aria-label': 'Idioma', style: { width: '100%' }, onchange: e => T.app.setLanguage(e.target.value) },
+      el('option', { value: 'system', text: 'Usar el idioma del sistema' }),
+      // cada idioma se nombra en su propia lengua, sin traducir
+      [['es', 'Español'], ['en', 'English'], ['pt', 'Português']].map(([v, t]) => { const o = el('option', { value: v }); o.textContent = t; return o; }));
+    lang.value = T.state.lang;
+    const fname = UI.radioName(), f11 = T.app.f11Mode();
+    const full = [
+      ['window', 'F11: pantalla completa normal', 'Mayús+F11: solo la imagen, como en Paint.'],
+      ['image', 'F11: solo la imagen, como en Paint', 'Mayús+F11: pantalla completa normal.']
+    ].map(([v, l, sub]) => {
+      const r = UI.radio(fname, v, l, v === f11, sub);
+      r.input.addEventListener('change', () => T.app.setF11(v));
+      return r;
+    });
     await UI.dialog({
       title: 'Configuración', width: 380,
-      body: el('div', null, el('div.fsection', { text: 'Tema de la aplicación' }), opts),
+      body: el('div', null, el('div.fsection', { text: 'Idioma' }), lang, el('div.fsection', { text: 'Tema de la aplicación' }), opts,
+        el('div.fsection', { text: 'Pantalla completa' }), full),
       buttons: [{ label: 'Cerrar', primary: true, value: true }]
     });
   };
@@ -191,6 +206,14 @@
     return UI.dialog({
       title: 'Guardar como SVG', body, width: 440, cancelValue: null,
       buttons: [{ label: 'Guardar', primary: true, onClick: () => UI.radioValue(body, name) }, { label: 'Cancelar', value: null }]
+    });
+  };
+
+  D.paintHidden = function () {
+    return UI.dialog({
+      title: 'Capas ocultas', width: 420, cancelValue: null,
+      body: 'Este proyecto tiene capas ocultas y el formato .paint no guarda esa información. ¿Qué quieres hacer con ellas?',
+      buttons: [{ label: 'Omitirlas', value: 'omit', primary: true }, { label: 'Incluirlas visibles', value: 'keep' }, { label: 'Cancelar', value: null }]
     });
   };
 
