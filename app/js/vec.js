@@ -80,6 +80,100 @@
     return parts.join('');
   };
 
+  /* ---------- Relleno ----------
+   * px: RGBA sin premultiplicar (se modifica). Rellena desde (x, y) los píxeles 4-conexos
+   * parecidos al del clic (tolerancia `tol` por canal, en alfa premultiplicado) con `rgb` opaco.
+   * Los píxeles del borde que mezclan el color original con otro (bordes suavizados) se recolorean
+   * en la proporción en que tenían el color original: así no quedan halos sin pintar.
+   * Devuelve null si no hay nada que cambiar, o { mask (1 = relleno, 2 = borde), x0, y0, x1, y1, edge, edgeOpaque }. */
+  V.floodFill = function (px, w, h, x, y, rgb, tol) {
+    tol = tol == null ? 24 : tol;
+    const N = w * h, s0 = (y * w + x) * 4, ta = px[s0 + 3], tk = ta / 255;
+    const T0 = px[s0] * tk, T1 = px[s0 + 1] * tk, T2 = px[s0 + 2] * tk, T3 = ta;
+    const F0 = rgb[0], F1 = rgb[1], F2 = rgb[2];
+    if (Math.max(Math.abs(F0 - T0), Math.abs(F1 - T1), Math.abs(F2 - T2), 255 - T3) < 0.5) return null;
+    // 1) una pasada lineal: qué píxeles se parecen al del clic
+    const u32 = new Uint32Array(px.buffer, px.byteOffset, N), t32 = u32[y * w + x];
+    const ok = new Uint8Array(N);
+    for (let i = 0, o = 0; i < N; i++, o += 4) {
+      if (u32[i] === t32) { ok[i] = 1; continue; }
+      const a = px[o + 3], k = a / 255;
+      let m = a > T3 ? a - T3 : T3 - a, v = px[o] * k - T0;
+      if (v < 0) v = -v; if (v > m) m = v;
+      v = px[o + 1] * k - T1; if (v < 0) v = -v; if (v > m) m = v;
+      v = px[o + 2] * k - T2; if (v < 0) v = -v; if (v > m) m = v;
+      if (m <= tol) ok[i] = 1;
+    }
+    // 2) relleno por tramos horizontales (4-conexo)
+    const mask = new Uint8Array(N), stack = new Int32Array(N * 2 + 2);
+    let sp = 0, x0 = x, x1 = x, y0 = y, y1 = y;
+    stack[sp++] = x; stack[sp++] = y;
+    while (sp) {
+      const cy = stack[--sp];
+      let cx = stack[--sp], i = cy * w + cx;
+      if (mask[i] || !ok[i]) continue;
+      while (cx > 0 && ok[i - 1] && !mask[i - 1]) { cx--; i--; }
+      if (cx < x0) x0 = cx;
+      if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+      let up = false, down = false;
+      for (; cx < w && ok[i] && !mask[i]; cx++, i++) {
+        mask[i] = 1;
+        if (cy > 0) { const a = ok[i - w] && !mask[i - w]; if (a && !up) { stack[sp++] = cx; stack[sp++] = cy - 1; } up = a; }
+        if (cy < h - 1) { const a = ok[i + w] && !mask[i + w]; if (a && !down) { stack[sp++] = cx; stack[sp++] = cy + 1; } down = a; }
+      }
+      if (cx - 1 > x1) x1 = cx - 1;
+    }
+    // 3) borde: píxeles fuera del relleno que tocan el relleno (también en diagonal)
+    const edge = [];
+    let edgeOpaque = true;
+    const ey0 = Math.max(0, y0 - 1), ey1 = Math.min(h - 1, y1 + 1), ex0 = Math.max(0, x0 - 1), ex1 = Math.min(w - 1, x1 + 1);
+    for (let yy = ey0; yy <= ey1; yy++) {
+      for (let xx = ex0; xx <= ex1; xx++) {
+        const j = yy * w + xx;
+        if (mask[j]) continue;
+        let touch = false;
+        for (let dy = -1; dy <= 1 && !touch; dy++) {
+          const ny = yy + dy;
+          if (ny < 0 || ny >= h) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = xx + dx;
+            if (nx >= 0 && nx < w && mask[ny * w + nx] === 1) { touch = true; break; }
+          }
+        }
+        if (!touch) continue;
+        mask[j] = 2;
+        const o = j * 4, a0 = px[o + 3], k = a0 / 255;
+        const P0 = px[o] * k, P1 = px[o + 1] * k, P2 = px[o + 2] * k;
+        // canal más alejado del original: cuánto «color original» queda en este píxel
+        const P = [P0, P1, P2, a0], Tq = [T0, T1, T2, T3];
+        let c = 0, best = -1;
+        for (let q = 0; q < 4; q++) { const dd = Math.abs(P[q] - Tq[q]); if (dd > best) { best = dd; c = q; } }
+        const room = P[c] > Tq[c] ? 255 - Tq[c] : Tq[c];
+        const share = room > 0 ? 1 - best / room : 0;
+        if (share <= 0.02) continue;
+        const a = Math.min(255, Math.max(0, a0 + share * (255 - T3)));
+        const Fq = [F0, F1, F2];
+        for (let q = 0; q < 3; q++) {
+          const v = Math.min(255, Math.max(0, P[q] + share * (Fq[q] - Tq[q])));
+          px[o + q] = a ? Math.round(v * 255 / a) : 0;
+        }
+        px[o + 3] = Math.round(a);
+        if (px[o + 3] !== 255) edgeOpaque = false;
+        edge.push(j);
+      }
+    }
+    for (const j of edge) {
+      const xx = j % w, yy = (j - xx) / w;
+      if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+    }
+    // 4) pintar el relleno
+    const f32 = (255 << 24 | F2 << 16 | F1 << 8 | F0) >>> 0;
+    const little = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+    if (little) { for (let i = 0; i < N; i++) if (mask[i] === 1) u32[i] = f32; }
+    else for (let i = 0; i < N; i++) if (mask[i] === 1) { const o = i * 4; px[o] = F0; px[o + 1] = F1; px[o + 2] = F2; px[o + 3] = 255; }
+    return { mask, x0, y0, x1, y1, edge, edgeOpaque };
+  };
+
   /* Simplificación Ramer-Douglas-Peucker de una polilínea [{x,y}]. */
   V.rdp = function (pts, eps) {
     const n = pts.length;

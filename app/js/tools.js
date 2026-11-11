@@ -174,43 +174,29 @@
       if (x < 0 || y < 0 || x >= pg.w || y >= pg.h) return;
       const color = U.hexToRgb(colorFor(ev.button));
       const w = pg.w, h = pg.h;
-      const im = L.ctx.getImageData(0, 0, w, h), d = new Uint32Array(im.data.buffer);
-      const target = d[y * w + x];
-      const fillV = (255 << 24 | color[2] << 16 | color[1] << 8 | color[0]) >>> 0;
-      if (target === fillV) return;
-      const mask = new Uint8Array(w * h);
-      const stack = [x, y];
-      let x0 = x, x1 = x, y0 = y, y1 = y;
-      while (stack.length) {
-        const cy = stack.pop();
-        let cx = stack.pop();
-        let i = cy * w + cx;
-        if (mask[i] || d[i] !== target) continue;
-        while (cx > 0 && d[i - 1] === target && !mask[i - 1]) { cx--; i--; }
-        let up = false, down = false;
-        for (; cx < w && d[i] === target && !mask[i]; cx++, i++) {
-          mask[i] = 1; d[i] = fillV;
-          if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
-          if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
-          if (cy > 0) {
-            const a = d[i - w] === target && !mask[i - w];
-            if (a && !up) stack.push(cx, cy - 1);
-            up = a;
-          }
-          if (cy < h - 1) {
-            const a = d[i + w] === target && !mask[i + w];
-            if (a && !down) stack.push(cx, cy + 1);
-            down = a;
-          }
-        }
-      }
+      const im = L.ctx.getImageData(0, 0, w, h);
+      const r = V.floodFill(im.data, w, h, x, y, color);
+      if (!r) return;
       L.ctx.putImageData(im, 0, 0);
-      const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
+      const rw = r.x1 - r.x0 + 1, rh = r.y1 - r.y0 + 1;
       const bits = new Uint8Array(rw * rh);
-      for (let yy = 0; yy < rh; yy++) for (let xx = 0; xx < rw; xx++) bits[yy * rw + xx] = mask[(yy + y0) * w + xx + x0];
-      const dd = V.traceMask(bits, rw, rh, x0, y0);
-      L.pushVec(V.raw('<path shape-rendering="crispEdges" d="' + dd + '" fill="' + U.rgbToHex(color[0], color[1], color[2]) + '"/>'));
-      pg.commit('Relleno', { rect: { x: x0, y: y0, w: rw, h: rh } });
+      for (let yy = 0; yy < rh; yy++) for (let xx = 0; xx < rw; xx++) bits[yy * rw + xx] = r.mask[(yy + r.y0) * w + xx + r.x0] === 1 ? 1 : 0;
+      const hex = U.rgbToHex(color[0], color[1], color[2]);
+      let mk = '<path shape-rendering="crispEdges" d="' + V.traceMask(bits, rw, rh, r.x0, r.y0) + '" fill="' + hex + '"/>';
+      // borde suavizado: si todo quedó opaco, cada píxel del borde va como cuadradito de su color;
+      // si no, no se da vector y el historial guarda un parche de imagen exacto
+      if (r.edge.length) {
+        if (r.edgeOpaque && r.edge.length <= 20000) {
+          const byColor = new Map();
+          for (const e of r.edge) {
+            const k = U.rgbToHex(im.data[e * 4], im.data[e * 4 + 1], im.data[e * 4 + 2]);
+            byColor.set(k, (byColor.get(k) || '') + 'M' + (e % w) + ' ' + Math.floor(e / w) + 'h1v1h-1z');
+          }
+          for (const [k, d] of byColor) mk += '<path shape-rendering="crispEdges" d="' + d + '" fill="' + k + '"/>';
+        } else mk = null;
+      }
+      if (mk) L.pushVec(V.raw(mk));
+      pg.commit('Relleno', { rect: { x: r.x0, y: r.y0, w: rw, h: rh } });
     }
   };
 
