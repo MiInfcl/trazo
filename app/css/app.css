@@ -94,6 +94,17 @@ svg.ic .a { fill: var(--ic-accent); stroke: none; }
 .ibtn:active { background: var(--pressed); }
 .ibtn:disabled, .ibtn.disabled { opacity: .36; pointer-events: none; }
 .mspacer { flex: 1; }
+.mlink { height: 32px; padding: 0 10px; border-radius: 4px; display: inline-flex; align-items: center; flex: none; font-size: 13px; color: var(--text2); text-decoration: none; white-space: nowrap; }
+.mlink:hover { background: var(--hover); color: var(--text); }
+.mlink:active { background: var(--pressed); }
+/* Teléfono: la barra se compacta para que quepan el enlace y la configuración. */
+@media (max-width: 520px) {
+  #menubar { padding: 0 2px; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .mbtn { padding: 0 7px; }
+  .msep { margin: 0 2px; }
+  .ibtn { width: 30px; }
+  .mlink { padding: 0 6px; }
+}
 
 /* ---------- Cinta ---------- */
 #ribbon { display: flex; align-items: stretch; height: 108px; padding: 6px 6px 3px; background: var(--ribbon); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex: none; }

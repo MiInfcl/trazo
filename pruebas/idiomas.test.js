@@ -12,7 +12,7 @@ idiomaSistema('es-CL');
 require(path.join(dir, 'i18n.js'));
 const T = globalThis.window.T, I = T.i18n;
 
-const SIN_TRADUCIR = new Set(['PNG', 'JPEG', 'BMP', 'GIF', 'TIFF', 'WebP', 'SVG', 'Trazo']);
+const SIN_TRADUCIR = new Set(['PNG', 'JPEG', 'BMP', 'GIF', 'TIFF', 'WebP', 'SVG', 'Trazo', 'taller.ink']);
 
 function textosVisibles() {
   const out = new Set();

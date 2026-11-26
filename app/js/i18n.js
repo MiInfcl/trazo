@@ -22,7 +22,8 @@
     'Invertir colores': ['Invert colors', 'Inverter cores'], 'Acercar': ['Zoom in', 'Ampliar'], 'Alejar': ['Zoom out', 'Reduzir'],
     'Ajustar a la ventana': ['Fit to window', 'Ajustar à janela'], 'Reglas': ['Rulers', 'Réguas'], 'Cuadrícula': ['Gridlines', 'Linhas de grade'],
     'Barra de estado': ['Status bar', 'Barra de status'], 'Cinta': ['Ribbon', 'Faixa de opções'], 'Miniatura': ['Thumbnail', 'Miniatura'], 'Pantalla completa': ['Full screen', 'Tela inteira'],
-    'Configuración': ['Settings', 'Configurações'], 'Mostrar la cinta': ['Show the ribbon', 'Mostrar a faixa de opções'], 'Ocultar la cinta': ['Hide the ribbon', 'Ocultar a faixa de opções'],
+    'Volver a taller.ink': ['Back to taller.ink', 'Voltar para taller.ink'],
+    'Configuración': ['Settings', 'Configurações'],'Mostrar la cinta': ['Show the ribbon', 'Mostrar a faixa de opções'], 'Ocultar la cinta': ['Hide the ribbon', 'Ocultar a faixa de opções'],
 
     /* Teclas */
     'Supr': ['Del', 'Del'], 'Ctrl+Mayús+O': ['Ctrl+Shift+O', 'Ctrl+Shift+O'], 'Ctrl+Mayús+X': ['Ctrl+Shift+X', 'Ctrl+Shift+X'], 'Ctrl+Mayús+I': ['Ctrl+Shift+I', 'Ctrl+Shift+I'],

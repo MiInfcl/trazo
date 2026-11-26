@@ -106,7 +106,10 @@
       mb('Archivo', fileMenu), mb('Editar', editMenu), mb('Ver', viewMenu), el('div.msep'),
       el('button.ibtn', { html: T.icon('save', 20), data: { tip: 'Guardar', key: 'Ctrl+S' }, 'aria-label': 'Guardar', onclick: () => F().save() }),
       el('button.ibtn', { html: T.icon('open', 20), data: { tip: 'Abrir', key: 'Ctrl+O' }, 'aria-label': 'Abrir', onclick: () => F().open() }),
-      el('div.msep'), R.undoBtn, R.redoBtn, el('div.mspacer'), R.unfoldBtn,
+      el('div.msep'), R.undoBtn, R.redoBtn, el('div.mspacer'),
+      /* Vuelta al sitio principal; en el .exe no va (sacaría la ventana de la app). */
+      T.host.desktop ? null : el('a.mlink', { href: 'https://taller.ink', text: 'taller.ink', data: { tip: 'Volver a taller.ink' }, 'aria-label': 'Volver a taller.ink' }),
+      R.unfoldBtn,
       el('button.ibtn', { html: T.icon('settings', 20), data: { tip: 'Configuración' }, 'aria-label': 'Configuración', onclick: () => D().settings() })
     ]);
   };
